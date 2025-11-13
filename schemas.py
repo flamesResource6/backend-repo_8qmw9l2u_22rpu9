@@ -1,48 +1,88 @@
 """
-Database Schemas
+Database Schemas for Billing System
 
-Define your MongoDB collection schemas here using Pydantic models.
-These schemas are used for data validation in your application.
+Each Pydantic model corresponds to a MongoDB collection. Collection name is the lowercase class name.
 
-Each Pydantic model represents a collection in your database.
-Model name is converted to lowercase for the collection name:
-- User -> "user" collection
-- Product -> "product" collection
-- BlogPost -> "blogs" collection
+Collections:
+- User (role-based access)
+- StafWilayahTugas (mapping staff to wilayah)
+- Golongan (tariff group)
+- TarifProgresif (progressive tiers per golongan)
+- Pelanggan (customers)
+- Tagihan (bills)
+- DetailTagihan (bill line items for tiers)
+- Pembayaran (payments)
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional, Literal, List
+from datetime import date, datetime
 
-# Example schemas (replace with your own):
+Role = Literal['admin', 'staf']
+StatusPelanggan = Literal['Aktif', 'Nonaktif']
+StatusBayar = Literal['Belum Bayar', 'Lunas']
+TipeWilayah = Literal['kecamatan', 'kabupaten']
 
 class User(BaseModel):
-    """
-    Users collection schema
-    Collection name: "user" (lowercase of class name)
-    """
-    name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
-    address: str = Field(..., description="Address")
-    age: Optional[int] = Field(None, ge=0, le=120, description="Age in years")
-    is_active: bool = Field(True, description="Whether user is active")
+    name: str = Field(..., description="Nama lengkap")
+    email: EmailStr = Field(..., description="Email unik")
+    password_hash: str = Field(..., description="Hash password")
+    role: Role = Field('staf', description="Peran pengguna")
+    is_active: bool = Field(True, description="Aktif/tidak")
 
-class Product(BaseModel):
-    """
-    Products collection schema
-    Collection name: "product" (lowercase of class name)
-    """
-    title: str = Field(..., description="Product title")
-    description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
-    category: str = Field(..., description="Product category")
-    in_stock: bool = Field(True, description="Whether product is in stock")
+class StafWilayahTugas(BaseModel):
+    user_id: str = Field(..., description="Ref ke users")
+    nama_wilayah_tugas: str = Field(..., max_length=50)
+    tipe_wilayah: TipeWilayah
 
-# Add your own schemas here:
-# --------------------------------------------------
+class Golongan(BaseModel):
+    kode_golongan: str = Field(..., description="Kode unik")
+    nama_golongan: str = Field(...)
+    biaya_beban: float = Field(..., ge=0)
+    biaya_admin: float = Field(..., ge=0)
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+class TarifProgresif(BaseModel):
+    id_golongan: str = Field(..., description="Ref ke golongan")
+    batas_bawah_m3: int = Field(..., ge=0)
+    batas_atas_m3: int = Field(..., ge=0)
+    harga_per_m3: float = Field(..., ge=0)
+
+class Pelanggan(BaseModel):
+    nomor_pelanggan: str = Field(...)
+    nama_pelanggan: str = Field(...)
+    alamat: str = Field(...)
+    desa: Optional[str] = None
+    kecamatan: Optional[str] = Field(None, max_length=50)
+    kabupaten: Optional[str] = Field(None, max_length=50)
+    id_golongan: str = Field(...)
+    nomor_meter: str = Field(...)
+    status_pelanggan: StatusPelanggan = 'Aktif'
+
+class Tagihan(BaseModel):
+    nomor_nota: str = Field(...)
+    id_pelanggan: str = Field(...)
+    periode_tagihan: str = Field(..., description="YYYY-MM")
+    tanggal_tagihan: date
+    meter_awal: int = Field(..., ge=0)
+    meter_akhir: int = Field(..., ge=0)
+    pemakaian_m3: int = Field(..., ge=0)
+    total_harga_air: float = Field(..., ge=0)
+    biaya_beban: float = Field(..., ge=0)
+    denda: float = Field(0, ge=0)
+    total_tagihan: float = Field(..., ge=0)
+    status_bayar: StatusBayar = 'Belum Bayar'
+    id_petugas_catat: str = Field(...)
+
+class DetailTagihan(BaseModel):
+    id_tagihan: str = Field(...)
+    keterangan_tier: str = Field(...)
+    pakai_m3: int = Field(..., ge=0)
+    harga_per_m3: float = Field(..., ge=0)
+    subtotal: float = Field(..., ge=0)
+
+class Pembayaran(BaseModel):
+    id_tagihan: str = Field(...)
+    tanggal_bayar: datetime
+    jumlah_bayar: float = Field(..., ge=0)
+    metode_bayar: str = Field(...)
+    id_kasir: str = Field(...)
